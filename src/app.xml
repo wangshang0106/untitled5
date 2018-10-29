@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+	http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+	http://www.springframework.org/schema/tx
+	http://www.springframework.org/schema/tx/spring-tx-2.5.xsd
+	http://www.springframework.org/schema/aop
+	http://www.springframework.org/schema/aop/spring-aop-3.1.xsd
+	http://www.springframework.org/schema/context
+	http://www.springframework.org/schema/context/spring-context.xsd">
+    <context:component-scan base-package="cn.service"/>
+    <context:component-scan base-package="cn.dao"/>
+    <context:component-scan base-package="cn.controller"/>
+
+    <!-- 引入属性文件，在配置中占位使用 -->
+
+    <context:property-placeholder location="classpath:database.properties"/>
+
+    <!-- JNDI获取数据源(使用dbcp连接池) -->
+    <bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource" destroy-method="close" scope="singleton">
+        <property name="driverClassName" value="${driver}"/>
+        <property name="url" value="${url}"/>
+        <property name="username" value="${user}"/>
+        <property name="password" value="${password}"/>
+        <property name="initialSize" value="${initialSize}"/>
+        <property name="maxActive" value="${maxActive}"/>
+        <property name="maxIdle" value="${maxIdle}"/>
+        <property name="minIdle" value="${minIdle}"/>
+        <property name="maxWait" value="${maxWait}"/>
+        <property name="removeAbandonedTimeout" value="${removeAbandonedTimeout}"/>
+        <property name="removeAbandoned" value="${removeAbandoned}"/>
+        <!-- sql 心跳 -->
+        <property name="testWhileIdle" value="true"/>
+        <property name="testOnBorrow" value="false"/>
+        <property name="testOnReturn" value="false"/>
+        <property name="validationQuery" value="select 1"/>
+        <property name="timeBetweenEvictionRunsMillis" value="60000"/>
+        <property name="numTestsPerEvictionRun" value="${maxActive}"/>
+    </bean>
+    <!-- 会话工厂bean sqlSessionFactoryBean -->
+    <bean id="SessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!--数据源-->
+        <property name="dataSource" ref="dataSource"/>
+        <!-- sql映射文件路径 -->
+        <property name="mapperLocations" value="classpath*:cn/dao/UsersDaoMapper.xml"/>
+        <!--别名-->
+        <property name="typeAliasesPackage" value="cn.cn.pojo"/>
+    </bean>
+
+    <!-- 自动扫描对象关系映射 -->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <!-- 指定要自动扫描接口的基础包，实现接口 -->
+        <property name="basePackage" value="cn.dao"/>
+    </bean>
+
+    <!-- 声明式事务管理 -->
+    <!--定义事物管理器，由spring管理事务 -->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!--支持注解驱动的事务管理，指定事务管理器 -->
+    <!-- AOP 事务处理 开始 -->
+    <!-- <aop:config  proxy-target-class="true">
+        <aop:pointcut expression="execution(* cn.service..*(..))" id="transService"/>
+        <aop:advisor pointcut-ref="transService" advice-ref="txAdvice" />
+    </aop:config>-->
+
+
+    <tx:advice id="txAdvice" transaction-manager="transactionManager">
+        <tx:attributes>
+            <tx:method name="sel*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="add*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="update*" propagation="REQUIRED" rollback-for="Exception"/>
+            <tx:method name="del*" propagation="REQUIRED" rollback-for="Exception"/>
+        </tx:attributes>
+    </tx:advice>
+
+
+    <!-- =========================================================
+         Shiro Core Components - Not Spring Specific
+         ========================================================= -->
+    <!-- Shiro's main business-tier object for web-enabled applications
+         (use DefaultSecurityManager instead when there is no web environment)-->
+    <!--安全管理器，shrio中最核心的API
+        cacheManager缓存管理器
+        realm:负责获取处理数据
+    -->
+    <bean id="securityManager" class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+        <property name="cacheManager" ref="cacheManager"/>
+        <!-- Single realm app.  If you have multiple realms, use the 'realms' property instead. -->
+        <property name="sessionMode" value="native"/>
+        <property name="realm" ref="jdbcRealm"/>
+    </bean>
+    <bean id="jdbcRealm" class="cn.shrio.bean.ShrioRealm"></bean>
+    <!-- Let's use some enterprise caching support for better performance.  You can replace this with any enterprise
+         caching framework implementation that you like (Terracotta+Ehcache, Coherence, GigaSpaces, etc -->
+    <!--我们可以使用的缓存技术
+    默认的：ehcache缓存框架
+    -->
+    <bean id="cacheManager" class="org.apache.shiro.cache.ehcache.EhCacheManager">
+        <!-- Set a net.sf.ehcache.CacheManager instance here if you already have one.  If not, a new one
+             will be creaed with a default config:
+             <property name="cacheManager" ref="ehCacheManager"/> -->
+        <!-- If you don't have a pre-built net.sf.ehcache.CacheManager instance to inject, but you want
+             a specific Ehcache configuration to be used, specify that here.  If you don't, a default
+             will be used.: -->
+        <property name="cacheManagerConfigFile" value="classpath*:ehcache.xml"/>
+    </bean>
+
+    <!-- Used by the SecurityManager to access security data (users, roles, etc).
+         Many other realm implementations can be used too (PropertiesRealm,
+         LdapRealm, etc. -->
+    <!-- <bean id="jdbcRealm" class="org.apache.shiro.samples.spring.realm.SaltAwareJdbcRealm">
+         <property name="name" value="jdbcRealm"/>
+         <property name="dataSource" ref="dataSource"/>
+         <property name="credentialsMatcher">
+             &lt;!&ndash; The 'bootstrapDataPopulator' Sha256 hashes the password
+                  (using the username as the salt) then base64 encodes it: &ndash;&gt;
+             <bean class="org.apache.shiro.authc.credential.HashedCredentialsMatcher">
+                 <property name="hashAlgorithmName" value="SHA-256"/>
+                 &lt;!&ndash; true means hex encoded, false means base64 encoded &ndash;&gt;
+                 <property name="storedCredentialsHexEncoded" value="false"/>
+             </bean>
+         </property>
+     </bean>-->
+
+    <!-- =========================================================
+         Shiro Spring-specific integration
+         ========================================================= -->
+    <!--后处理器，自动调用init()和destroy()方法
+            对于spring配置的Shiro对象，您不必这样做
+            1)为每个bean指定一个init-method和-method属性和定义
+            2)甚至知道哪个Shiro对象需要这些方法
+             调用。 -->
+    <!--后置通知器-->
+    <!--必须要有这样的实例，用来管理在Sping容器当中的shrio常见的对象-->
+    <bean id="lifecycleBeanPostProcessor" class="org.apache.shiro.spring.LifecycleBeanPostProcessor"/>
+
+    <!-- Enable Shiro Annotations for Spring-configured beans.  Only run after
+         the lifecycleBeanProcessor has run: -->
+    <!--启用shrio注解-->
+    <bean class="org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator"
+          depends-on="lifecycleBeanPostProcessor"/>
+    <bean class="org.apache.shiro.spring.security.interceptor.AuthorizationAttributeSourceAdvisor">
+        <property name="securityManager" ref="securityManager"/>
+    </bean>
+
+    <!-- Secure Spring remoting:  Ensure any Spring Remoting method invocations can be associated
+         with a Subject for security checks. -->
+    <!--网络方面-->
+    <bean id="secureRemoteInvocationExecutor" class="org.apache.shiro.spring.remoting.SecureRemoteInvocationExecutor">
+        <property name="securityManager" ref="securityManager"/>
+    </bean>
+
+    <!-- Define the Shiro Filter here (as a FactoryBean) instead of directly in web.xml -
+         web.xml uses the DelegatingFilterProxy to access this bean.  This allows us
+         to wire things with more control as well utilize nice Spring things such as
+         PropertiesPlaceholderConfigurer and abstract beans or anything else we might need: -->
+    <!--配置shrioFilter
+    1.shrioFilter的ID必须与在web.xml当中配置的filter-name保持一致
+    -->
+    <bean id="shiroFilter" class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+        <!--当前的过滤器所要使用的安全管理器-->
+        <property name="securityManager" ref="securityManager"/>
+        <!--当前web应用程序的欢迎页面-->
+        <property name="loginUrl" value="/index.jsp"/>
+        <!--登陆成功跳转的页面-->
+        <property name="successUrl" value="/lalala.jsp"/>
+        <!--登陆失败跳转的页面-->
+        <property name="unauthorizedUrl" value="/wuwu.jsp"/>
+        <!-- The 'filters' property is not necessary since any declared javax.servlet.Filter bean
+             defined will be automatically acquired and available via its beanName in chain
+             definitions, but you can perform overrides or parent/child consolidated configuration
+             here if you like: -->
+        <!-- <property name="filters">
+            <util:map>
+                <entry key="aName" value-ref="someFilterPojo"/>
+            </util:map>
+        </property> -->
+        <!--代表我们要完成shrio过滤器的具体配置-->
+        <property name="filterChainDefinitions">
+            <value>
+                <!--anon表示未登录的情况下要访问的内容-->
+                /index.jsp = anon
+               <!-- /logo.png = anon
+                /shiro.css = anon
+                /s/login = anon
+                # allow WebStart to pull the jars for the swing app:
+                /*.jar = anon
+                # everything else requires authentication:-->
+                <!--authc表示必须登陆以后才能访问的页面
+                /**表示除了anon的页面之外的其他页面
+                -->
+                /** = authc
+            </value>
+        </property>
+    </bean>
+
+</beans>
